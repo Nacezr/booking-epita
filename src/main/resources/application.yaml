@@ -30,9 +30,9 @@ server:
   ssl:
     bundle: web
   port: 8443
-  # Step 1b: Enable SSL and specify ssl bundle
-  # ...
-  # Step 1b: End of SSL configuration
   # Step 5: Configure session cookie with SameSite attribute
-  # ...
+  servlet:
+    session:
+      cookie:
+        same-site: strict
   # Step 5: End of session cookie configuration
