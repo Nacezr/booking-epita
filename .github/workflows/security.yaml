@@ -65,9 +65,7 @@ jobs:
       - name: compare analysis
         uses: google/osv-scanner-action/osv-reporter-action@v1.9.2
         with:
-          old-analysis: baseline_scan.sarif
-          new-analysis: pr_scan.sarif
-          output: diff_report.sarif
+          args: --old baseline_scan.sarif --new pr_scan.sarif --output diff_report.sarif
 
       - name: save differential report
         uses: actions/upload-artifact@v4
