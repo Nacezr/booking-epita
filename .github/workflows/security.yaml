@@ -63,7 +63,7 @@ jobs:
         continue-on-error: true
 
       - name: compare analysis
-        uses: google/osv-scanner-action/osv-reporter-action@v1
+        uses: google/osv-scanner-action/osv-reporter-action@v1.9.2
         with:
           old-analysis: baseline_scan.sarif
           new-analysis: pr_scan.sarif
