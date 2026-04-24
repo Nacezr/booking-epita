@@ -1,7 +1,8 @@
-name: security
+name: security-pipeline
 
 on:
-  workflow_dispatch
+  workflow_dispatch:
+  pull_request:
 
 permissions:
   actions: read
@@ -9,40 +10,88 @@ permissions:
   contents: read
 
 jobs:
-  dependencies-analysis:
-    name: Dependencies Analysis
+  daily-security:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: run osv-scanner
         uses: google/osv-scanner-action/osv-scanner-action@v1.9.2
         with:
-          scan-args: |-
-            --format sarif
-            --output DependenciesAnalysisFull.sarif
-            ./
+          scan-args: "--format sarif --output DependenciesAnalysisFull.sarif ./"
         continue-on-error: true
 
-      - name: Send report to security dashboard
+      - name: upload osv sarif
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: DependenciesAnalysisFull.sarif
 
-  source-code-analysis:
-    name: Source Code Analysis
+      - name: run semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: .semgrep
+          generateSarif: "1"
+
+      - name: upload semgrep sarif
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+
+  pr-dependencies:
+    if: github.event_name == 'pull_request'
+    name: DependenciesAnalysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: run osv-scanner after PR
+        uses: google/osv-scanner-action/osv-scanner-action@v1.9.2
+        with:
+          scan-args: "--format sarif --output pr_scan.sarif ./"
+        continue-on-error: true
+
+      - name: checkout baseline commit
+        run: git checkout ${{ github.event.pull_request.base.sha }}
+
+      - name: run osv-scanner before PR
+        uses: google/osv-scanner-action/osv-scanner-action@v1.9.2
+        with:
+          scan-args: "--format sarif --output baseline_scan.sarif ./"
+        continue-on-error: true
+
+      - name: compare analysis
+        uses: google/osv-scanner-action/osv-reporter-action@v1
+        with:
+          old-analysis: baseline_scan.sarif
+          new-analysis: pr_scan.sarif
+          output: diff_report.sarif
+
+      - name: save differential report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependencies-diff
+          path: diff_report.sarif
+
+  pr-source-code:
+    if: github.event_name == 'pull_request'
+    name: SourceCodeAnalysis
     runs-on: ubuntu-latest
     container:
       image: returntocorp/semgrep
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: run semgrep analysis
-        run: semgrep scan --config .semgrep --sarif --output semgrep.sarif
-
-      - name: Send report to security dashboard
-        uses: github/codeql-action/upload-sarif@v3
+      - uses: actions/checkout@v4
         with:
-          sarif_file: semgrep.sarif
+          fetch-depth: 0
+
+      - name: run differential analysis with semgrep
+        run: |
+          semgrep scan --config .semgrep --baseline-commit ${{ github.event.pull_request.base.sha }} --sarif --output semgrep_diff.sarif
+
+      - name: save differential report
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-diff
+          path: semgrep_diff.sarif
